@@ -6,6 +6,7 @@ from aiohttp.client_ws import ClientWebSocketResponse
 import logging
 import json
 import motor.motor_asyncio
+from bson import json_util
 
 from aiomisc.log import LogFormat, LogLevel, basic_config
 
@@ -15,12 +16,12 @@ log = logging.getLogger(__name__)
 
 
 class WebSocketHandler:
-    def __init__(self, url: str, loop=None) -> None:
+    def __init__(self, url: str, db_client, loop=None) -> None:
         self.url = url
         self.loop = loop or asyncio.get_event_loop()
         self.session = None
         self.websocket = None
-        self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/vehicle')
+        self.client = db_client
         self.db = self.client.get_database()
     
     async def connect(self):
@@ -61,26 +62,49 @@ class WebSocketHandler:
         self.websocket.close()
 
 
-async def handle(request):
-    name = request.match_info.get('name', "Anonymous")
-    text = "Hello, " + name
-    return web.Response(text=text)
+class RESTHandler:
 
-async def web_server():
+    def __init__(self, db_client, loop=None) -> None:
+        self.client = db_client
+        self.loop = loop or asyncio.get_event_loop()
+        self.db = self.client.get_database()
+        self.page_size = 50
+    
+    def handle_main(self, request):
+        kek = "I'm a teapot"
+        return web.Response(text=kek, status=418)
+    
+    async def handle_item(self, request):
+        page_num = request.query.get('page')
+        if page_num:
+            skips = self.page_size * (int(page_num) - 1)
+        else:
+            skips = 0
+        cursor = self.db.components.find().skip(skips).limit(self.page_size)
+        result = [document async for document in cursor]
+        return web.Response(text=json.dumps(result, default=json_util.default))
+
+
+async def web_server(handler):
     app = web.Application()
-    app.router.add_get('/', handle)
+    app.add_routes([
+        web.get('/', handler.handle_main),
+        web.get('/items', handler.handle_item)
+    ])
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="localhost", port=31337) 
-    await site.start()
+    api = web.TCPSite(runner, host="localhost", port=31337) 
+    await api.start()
     log.info("Start API serving on: ")
 
 async def main():
     _tasks = []
     event_loop = asyncio.get_event_loop()
-    ws_handler = WebSocketHandler("ws://localhost:8080", event_loop)
+    client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://localhost:27017/vehicle")
+    rest_handler = RESTHandler(client, event_loop)
+    ws_handler = WebSocketHandler("ws://localhost:8080", client, event_loop)
     _tasks.append(asyncio.create_task(ws_handler.connect()))
-    _tasks.append(asyncio.create_task(web_server()))
+    _tasks.append(asyncio.create_task(web_server(rest_handler)))
     await asyncio.gather(*_tasks)
 
 if __name__ == "__main__":
