@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 from aiohttp import web
 from aiohttp.client_ws import ClientWebSocketResponse
+import socket
 import logging
 import json
 import motor.motor_asyncio
@@ -25,8 +26,12 @@ class WebSocketHandler:
         self.db = self.client.get_database()
     
     async def connect(self):
-        self.session = aiohttp.ClientSession()
-        self.websocket = await self.session.ws_connect(url=self.url, ssl=False)
+        conn = aiohttp.TCPConnector(
+            family=socket.AF_INET,
+            ssl=False,
+        )
+        self.session = aiohttp.ClientSession(loop=self.loop, connector=conn, trust_env=True)
+        self.websocket = await self.session.ws_connect(url=self.url)
         await self.listen()
 
     async def listen(self):
@@ -93,17 +98,16 @@ async def web_server(handler):
     ])
     runner = web.AppRunner(app)
     await runner.setup()
-    api = web.TCPSite(runner, port=os.getenv("APP_PORT")) 
+    api = web.TCPSite(runner, port=int(os.getenv("APP_PORT")))
     await api.start()
     log.info(f"Start API serving on port {os.getenv('APP_PORT')} ...")
 
 async def main():
     _tasks = []
     event_loop = asyncio.get_event_loop()
-    print(os.getenv("DATABASE_URL"))
     client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("DATABASE_URL"))
-    rest_handler = RESTHandler(client, event_loop)
     ws_handler = WebSocketHandler(os.getenv("WS_URL"), client, event_loop)
+    rest_handler = RESTHandler(client, event_loop)
     _tasks.append(asyncio.create_task(ws_handler.connect()))
     _tasks.append(asyncio.create_task(web_server(rest_handler)))
     await asyncio.gather(*_tasks)

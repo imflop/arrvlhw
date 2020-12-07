@@ -1,3 +1,9 @@
+# Start up
+ - запусить `docker-compose up --build`
+ - открыть в браузере `http://localhost:5000/items`
+ - пагинацяи через параметр `page` пример: `http://localhost:5000/items?page=1`
+
+
 ## Done:
 
 - [x] подключение к сокету
