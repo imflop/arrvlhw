@@ -1,0 +1,39 @@
+version: "3"
+
+services:
+  mongodb:
+    restart: always
+    image: "mongo:latest"
+    volumes:
+      - ./data:/data/db
+    networks: 
+      - net
+  generator:
+    build:
+      context: ./generator
+      dockerfile: ./Dockerfile
+    depends_on:
+      - mongodb
+    ports:
+      - "8080:8080"
+    networks: 
+      - net
+  receiver:
+    build:
+      context: ./receiver
+      dockerfile: ./Dockerfile
+    depends_on:
+      - mongodb
+      - generator
+    environment:
+      - DATABASE_URL=mongodb://localhost:27017/vehicle
+      - WS_URL=ws://localhost:8080
+      - APP_PORT=5000
+    ports:
+      - "5000:5000"
+    networks: 
+      - net
+
+networks:
+  net:
+    driver: "bridge"

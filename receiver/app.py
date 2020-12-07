@@ -1,5 +1,5 @@
+import os
 import asyncio
-from asyncio import tasks
 import aiohttp
 from aiohttp import web
 from aiohttp.client_ws import ClientWebSocketResponse
@@ -26,7 +26,7 @@ class WebSocketHandler:
     
     async def connect(self):
         self.session = aiohttp.ClientSession()
-        self.websocket = await self.session.ws_connect(url=self.url)
+        self.websocket = await self.session.ws_connect(url=self.url, ssl=False)
         await self.listen()
 
     async def listen(self):
@@ -93,31 +93,20 @@ async def web_server(handler):
     ])
     runner = web.AppRunner(app)
     await runner.setup()
-    api = web.TCPSite(runner, host="localhost", port=31337) 
+    api = web.TCPSite(runner, port=os.getenv("APP_PORT")) 
     await api.start()
-    log.info("Start API serving on: ")
+    log.info(f"Start API serving on port {os.getenv('APP_PORT')} ...")
 
 async def main():
     _tasks = []
     event_loop = asyncio.get_event_loop()
-    client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://localhost:27017/vehicle")
+    print(os.getenv("DATABASE_URL"))
+    client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("DATABASE_URL"))
     rest_handler = RESTHandler(client, event_loop)
-    ws_handler = WebSocketHandler("ws://localhost:8080", client, event_loop)
+    ws_handler = WebSocketHandler(os.getenv("WS_URL"), client, event_loop)
     _tasks.append(asyncio.create_task(ws_handler.connect()))
     _tasks.append(asyncio.create_task(web_server(rest_handler)))
     await asyncio.gather(*_tasks)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    # event_loop = asyncio.get_event_loop()
-    # ws_handler = WebSocketHandler("ws://localhost:8080", event_loop)
-
-    # try:
-        # web.run_app(app, host="localhost", port=31337)
-        # event_loop.run_until_complete(ws_handler.connect())
-        
-    # except KeyboardInterrupt:
-    #     pass
-    # finally:
-    #     event_loop.run_until_complete(ws_handler.close())
-    #     event_loop.close()
