@@ -1,5 +1,4 @@
 import os
-from aiohttp.web_response import json_response
 import pytest
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
