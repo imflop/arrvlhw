@@ -2,11 +2,10 @@ import os
 import asyncio
 import aiohttp
 from aiohttp import web
-from aiohttp.client_ws import ClientWebSocketResponse
 import socket
 import logging
 import json
-import motor.motor_asyncio
+from motor.motor_asyncio import AsyncIOMotorClient
 from bson import json_util
 
 from aiomisc.log import LogFormat, LogLevel, basic_config
@@ -79,22 +78,25 @@ class RESTHandler:
         kek = "I'm a teapot"
         return web.Response(text=kek, status=418)
     
-    async def handle_item(self, request):
+    async def handle_items(self, request):
         page_num = request.query.get('page')
-        if page_num:
+        if page_num and page_num.isdigit() and int(page_num) > 0:
             skips = self.page_size * (int(page_num) - 1)
         else:
             skips = 0
         cursor = self.db.components.find().skip(skips).limit(self.page_size)
         result = [document async for document in cursor]
-        return web.Response(text=json.dumps(result, default=json_util.default))
+        return web.Response(
+            text=json.dumps(result, default=json_util.default),
+            content_type="application/json",
+        )
 
 
 async def web_server(handler):
     app = web.Application()
     app.add_routes([
         web.get('/', handler.handle_main),
-        web.get('/items', handler.handle_item)
+        web.get('/items', handler.handle_items)
     ])
     runner = web.AppRunner(app)
     await runner.setup()
@@ -102,10 +104,11 @@ async def web_server(handler):
     await api.start()
     log.info(f"Start API serving on port {os.getenv('APP_PORT')} ...")
 
+
 async def main():
     _tasks = []
     event_loop = asyncio.get_event_loop()
-    client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("DATABASE_URL"))
+    client = AsyncIOMotorClient(os.getenv("DATABASE_URL"))
     ws_handler = WebSocketHandler(os.getenv("WS_URL"), client, event_loop)
     rest_handler = RESTHandler(client, event_loop)
     _tasks.append(asyncio.create_task(ws_handler.connect()))
